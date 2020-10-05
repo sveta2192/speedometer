@@ -111,24 +111,9 @@ abstract class CircularGaugeView @JvmOverloads constructor(
         }
     }
 
-
-    open fun startAnimatingIndicator(maxAngle: Int) {
-        Thread {
-            var currentAngle = 0
-
-            while (start) {
-                invalidate()
-                try {
-                    Thread.sleep(200)
-                } catch (e: InterruptedException) {
-                    e.printStackTrace()
-                }
-                gaugeValue = dataService?.speed?:0
-
-
-            }
-
-        }.start()
+    fun onDataChanged(value: Int){
+        gaugeValue = value
+        invalidate()
     }
 
     private fun drawValues(canvas: Canvas) {

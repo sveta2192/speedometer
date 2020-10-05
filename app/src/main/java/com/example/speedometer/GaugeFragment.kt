@@ -19,22 +19,12 @@ class GaugeFragment(val layoutRes: Int, val viewId: Int) : Fragment() {
     ): View {
         val view: View = inflater.inflate(layoutRes, container, false)
         speedometer = view.findViewById(viewId)
-        LocalBroadcastManager.getInstance(view.context)
-            .registerReceiver(localBroadcastReceiver, IntentFilter(BROADCAST_ACTION))
+        (activity as FullscreenActivity).notifyChangeGauge()
         return view
-    }
-    private val notifIntentFilter = IntentFilter(BROADCAST_ACTION);
-    val localBroadcastReceiver = object : BroadcastReceiver(){
-        override fun onReceive(contxt: Context?, intent: Intent?) {
-            speedometer?.dataService = (activity as FullscreenActivity).aidlDataGeneratorService
-            speedometer?.startAnimatingIndicator(60)
-        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        LocalBroadcastManager.getInstance(this.requireContext())
-            .unregisterReceiver(localBroadcastReceiver)
     }
 
 }

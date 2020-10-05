@@ -9,11 +9,12 @@ import android.os.Bundle
 import android.os.IBinder
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.get
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentPagerAdapter
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.viewpager.widget.ViewPager
+import androidx.viewpager.widget.ViewPager.OnPageChangeListener
 import androidx.viewpager.widget.ViewPager.PageTransformer
 
 
@@ -25,7 +26,9 @@ public val BROADCAST_ACTION = "com.androidaidl.androidaidlservice.started"
 class FullscreenActivity : AppCompatActivity() {
 
     val ACTION_START_DATA_GENERATOR = "com.androidaidl.androidaidlservice.ProductService"
-
+    var dataProvider : DataProvider? = null
+    var viewPager: ViewPager? = null
+    lateinit var adapter : FragmentAdapter
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,20 +42,30 @@ class FullscreenActivity : AppCompatActivity() {
         val explicitIntent = Intent(intent)
 
         explicitIntent.component = component
-        val res = bindService(explicitIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-        log("bind res $res")
+        bindService(explicitIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        val adapter = MyAdapter(supportFragmentManager)
+        adapter = FragmentAdapter(supportFragmentManager)
 
-        val viewPager: ViewPager = findViewById(R.id.viewpager)
-        viewPager.adapter = adapter // устанавливаем адаптер
+        viewPager = findViewById(R.id.viewpager)
+        viewPager?.adapter = adapter
 
-        viewPager.currentItem = 0 // выводим второй экран
+        viewPager?.currentItem = 0
 
-        viewPager.setPageTransformer(false, object : PageTransformer {
+        viewPager?.setPageTransformer(false, object : PageTransformer {
             override fun transformPage(v: View, pos: Float) {
                 val opacity = Math.abs(Math.abs(pos) - 1)
                 v.setAlpha(opacity)
+            }
+        })
+        viewPager?.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
+
+            override fun onPageScrollStateChanged(state: Int) {
+            }
+
+            override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {
+            }
+            override fun onPageSelected(position: Int) {
+                dataProvider?.onChangeView((adapter.getItem(position) as GaugeFragment)?.speedometer)
             }
         })
     }
@@ -60,32 +73,48 @@ class FullscreenActivity : AppCompatActivity() {
     var aidlDataGeneratorService : ISpeedDataAidlInterface? = null
     val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            // приводим IBinder к нужному нам типу через Stub реализацию интерфейса
-            aidlDataGeneratorService = ISpeedDataAidlInterface.Stub.asInterface(service);
 
-            val intent = Intent()
-            intent.action = BROADCAST_ACTION
-            LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
+            aidlDataGeneratorService = ISpeedDataAidlInterface.Stub.asInterface(service);
+            dataProvider?.stopDataThread()
+            //view еще может быть не создана, сделала костыль во фрагменте
+            dataProvider = DataProvider(aidlDataGeneratorService, (adapter.getItem(viewPager?.currentItem?:0 ) as GaugeFragment)?.speedometer)
+            dataProvider?.startDataThread()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
             aidlDataGeneratorService = null;
-            log("onServiceDisconnected")
+            dataProvider?.stopDataThread()
         }
     }
 
-    class MyAdapter internal constructor(fm: FragmentManager) : FragmentPagerAdapter(fm) {
+    inner class FragmentAdapter internal constructor(fm: FragmentManager) :  FragmentPagerAdapter(fm, FragmentPagerAdapter.BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
+        val speedometerFragment = GaugeFragment(R.layout.speedometer_fragment, R.id.speedometer)
+        val tachometerFragment = GaugeFragment(R.layout.tachometer_fragment, R.id.tachometer)
         override fun getCount(): Int {
             return 2
         }
 
         override fun getItem(position: Int): Fragment {
             return when (position) {
-                0 -> GaugeFragment(R.layout.speedometer_fragment, R.id.speedometer)
-                1 -> GaugeFragment(R.layout.tachometer_fragment, R.id.tachometer)
-                else -> GaugeFragment(R.layout.speedometer_fragment, R.id.speedometer)
+                0 -> speedometerFragment
+                1 -> tachometerFragment
+                else -> speedometerFragment
             }
         }
+    }
+
+    override fun onPause() {
+        dataProvider?.stopDataThread()
+        super.onPause()
+    }
+
+    public fun notifyChangeGauge(){
+        dataProvider?.onChangeView((adapter.getItem(viewPager?.currentItem?:0) as GaugeFragment)?.speedometer)
+        dataProvider?.startDataThread()
+    }
+    override fun onResume() {
+        notifyChangeGauge()
+        super.onResume()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
